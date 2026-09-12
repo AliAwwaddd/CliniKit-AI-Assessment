@@ -1,0 +1,7 @@
+.DS_Store
+.claude/
+.prettierrc.json
+
+# Assessment materials kept local, not published
+AWWAD-Ali.pdf
+CliniKit_AI_Assessment.pdf
