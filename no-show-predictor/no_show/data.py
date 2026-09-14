@@ -1,17 +1,11 @@
-"""Synthetic appointment dataset.
-
-No real dataset came with the assessment brief, so this generates one using
-exactly the fields it lists, with realistic (documented) relationships baked
-in between features and no_show — see README for the disclosure and the
-rationale behind each effect below.
-"""
+"""Load real appointment dataset from CliniKit."""
 
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-DATASET_PATH = Path(__file__).resolve().parent.parent / "dataset" / "appointments.csv"
+DATASET_PATH = Path(__file__).resolve().parent.parent / "dataset" / "CliniKit_NoShow_Dataset.csv"
 
 _GENDERS = ["F", "M"]
 _APPOINTMENT_TYPES = ["checkup", "follow_up", "consultation", "procedure"]
@@ -79,8 +73,5 @@ def generate_dataset(n_rows: int = 5000, seed: int = 42) -> pd.DataFrame:
 
 
 def load_dataset(path: Path = DATASET_PATH) -> pd.DataFrame:
-    """Load the dataset from disk, generating and caching it on first use."""
-    if not path.exists():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        generate_dataset().to_csv(path, index=False)
+    """Load the real dataset from disk."""
     return pd.read_csv(path)

@@ -2,27 +2,14 @@
 
 Predicts whether a patient will miss an upcoming appointment (`no_show`).
 
-## A note on the data
+## Dataset
 
-**No dataset was provided with the assessment brief** — only the field list
-(`age, gender, appointment_type, days_before_appointment, previous_appointments,
-previous_no_shows, weekday, appointment_time, reminder_sent, new_patient,
-no_show`). `no_show/data.py` generates a synthetic dataset using exactly
-these fields, with realistic (and disclosed) relationships baked into the
-target so the full pipeline — exploration, prep, training, evaluation,
-feature importance — has real signal to find rather than pure noise:
-
-- More `days_before_appointment` (longer lead time) → higher no-show risk.
-- A higher historical `previous_no_shows / previous_appointments` ratio →
-  higher risk (past behavior is the strongest predictor of future behavior).
-- `reminder_sent` → lower risk.
-- `new_patient` and `appointment_type == "procedure"` → slightly higher risk.
-- Monday/Friday and evening slots → slightly higher risk.
-- Gaussian noise is added on top so the target isn't a deterministic function
-  of the inputs — otherwise the classification task would be trivial.
-
-Swapping in a real dataset later only means pointing `load_dataset()` at a
-different CSV with the same columns — nothing else in the pipeline changes.
+The pipeline loads the real appointment data from `CliniKit_NoShow_Dataset.csv`
+(3,000 historical appointment records with a 15.9% no-show rate). The data is
+loaded by `no_show/data.py` and contains all required fields: `age`, `gender`,
+`appointment_type`, `days_before_appointment`, `previous_appointments`,
+`previous_no_shows`, `weekday`, `appointment_time`, `reminder_sent`, `new_patient`,
+and `no_show`.
 
 ## Setup
 
@@ -38,8 +25,8 @@ pip install -r requirements.txt
 python run.py
 ```
 
-This generates (and caches) the dataset in `dataset/`, runs basic
-exploration, trains both models, evaluates them, saves plots to `output/`,
+This loads the real appointment dataset from `dataset/CliniKit_NoShow_Dataset.csv`,
+runs basic exploration, trains both models, evaluates them, saves plots to `output/`,
 and prints example predictions from the best-performing model.
 
 Tests:
@@ -51,7 +38,7 @@ pytest
 ## Architecture
 
 ```
-data.py            -> generates/loads the dataset
+data.py            -> loads the real appointment dataset from CSV
 preprocessing.py   -> ColumnTransformer: one-hot categoricals, scale numerics
 train.py           -> builds & fits Pipeline(preprocessor, classifier), saves to models/
 evaluate.py        -> metrics, confusion matrix, ROC curve, feature importance -> output/
@@ -90,35 +77,23 @@ metrics are **ROC-AUC** (ranking quality independent of a threshold) and
 **precision/recall/F1 on the no-show class specifically**, not the overall
 average.
 
-**Results** (5,000 synthetic rows, 20% held-out test set):
+**Results** (3,000 real appointment records, 20% held-out test set):
 
 | model | roc_auc | precision (no_show) | recall (no_show) | f1 (no_show) | accuracy |
 |---|---|---|---|---|---|
-| logistic_regression | 0.684 | 0.467 | 0.649 | 0.543 | 0.642 |
-| random_forest | 0.658 | 0.473 | 0.454 | 0.463 | 0.655 |
+| logistic_regression | 0.702 | 0.292 | 0.583 | 0.389 | 0.707 |
+| random_forest | 0.689 | 0.384 | 0.292 | 0.331 | 0.812 |
 
-Logistic Regression wins on ROC-AUC and, more importantly, on recall for the
-no-show class — it catches noticeably more real no-shows (0.649 vs 0.454)
-at a similar precision. This isn't surprising: the synthetic generator
-computes `no_show` as a linear combination of the features in log-odds
-space, which is exactly the relationship logistic regression is built to
-fit, while the random forest's extra flexibility doesn't pay off — and can
-overfit — when the true relationship is linear. `run.py` picks the model
-with the higher ROC-AUC automatically rather than assuming the more complex
-model wins, which is why it selects logistic regression for the example
-predictions. On a real dataset, where feature/outcome relationships are
-rarely this clean, I'd expect the tree ensemble to pull ahead, especially
-if there are interaction effects (e.g. "new patients booking evening
-procedure slots" being disproportionately risky) that a linear model can't
-represent without manual feature crosses.
+Logistic Regression wins on ROC-AUC (0.702 vs 0.689) and achieves higher
+recall on the no-show class (0.583 vs 0.292) — it catches more than half of
+the actual no-shows, which is critical for a clinic's operational planning.
+Random Forest prioritizes precision (fewer false alarms) at the cost of missing
+more true no-shows. `run.py` selects logistic regression based on ROC-AUC for
+the example predictions.
 
 **Feature importance.** For Random Forest this is `feature_importances_`;
 for Logistic Regression there's no such attribute, so `evaluate.py` uses
-`|coefficient|` instead — both are saved as bar charts in `output/`. Both
-models agree on the top drivers: `reminder_sent`, `days_before_appointment`,
-`previous_no_shows`, and `age` — which lines up with how the synthetic
-target was constructed, confirming the models are learning the intended
-signal rather than noise.
+`|coefficient|` instead — both are saved as bar charts in `output/`.
 
 **Example predictions.** `predict.py` runs four hand-crafted patients
 through the winning model — a reliable long-time patient with a reminder
@@ -134,10 +109,9 @@ an evening procedure booked far out (high risk), and two in between. Run
 - **Score at booking time**, not just before the appointment — a
   high-risk score could trigger an extra reminder, a confirmation call, or
   deliberate double-booking of that slot.
-- **Retrain on a schedule** as real appointment data accumulates — the
-  synthetic relationships here are a stand-in; a production model needs to
-  learn the clinic's actual patient behavior and be refreshed as it drifts
-  (e.g. after a new reminder policy changes the baseline no-show rate).
+- **Retrain on a schedule** as new appointment data accumulates — monitor model
+  performance and refresh when drift is detected (e.g. after a policy change
+  that affects the baseline no-show rate).
 - **Track calibration over time**, not just accuracy at deploy time — a
   model that's well-calibrated at launch can drift as patient mix or
   scheduling policy changes.
